@@ -6,12 +6,16 @@ use vaultrs::{
     kv2,
 };
 
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
 use crate::crypto::{get_key_type, get_keypair_bytes_from_private_key_hex, KeyPairBytes, KeyPairHex, KeyType};
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Secret {
     pub key_pair_bytes: KeyPairBytes,
+    #[zeroize(skip)]
     pub key_type: KeyType,
+    #[zeroize(skip)]
     pub secret_provider: SecretProvider,
 }
 

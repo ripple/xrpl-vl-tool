@@ -1,12 +1,12 @@
 use crate::crypto::verify_signature;
 use crate::manifest::{serialize_manifest_data, DecodedManifest};
-use crate::time::get_timestamp;
-use crate::vl::{DecodedVl, Validator};
+use crate::time::{convert_to_human_time, convert_to_unix_time, get_timestamp};
+use crate::vl::{DecodedVl, Validator, VlDiff};
 use anyhow::{Context, Result};
 use color_eyre::owo_colors::OwoColorize;
 use sha2::{Digest, Sha256, Sha512};
 use std::fs;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
 
 #[derive(Debug)]
@@ -26,9 +26,26 @@ impl From<Version> for u8 {
 
 pub fn generate_vl_file(content: &str, version: u8) -> Result<String> {
     let file_name = format!("generated_vl_v{}-{}.json", version, get_timestamp()?);
-    let mut file = File::create(&file_name)?;
+    let mut file = create_restricted_file(&file_name)?;
     file.write_all(content.as_bytes())?;
     Ok(file_name)
+}
+
+#[cfg(unix)]
+fn create_restricted_file(path: &str) -> Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)
+        .context("Could not create VL file")
+}
+
+#[cfg(not(unix))]
+fn create_restricted_file(path: &str) -> Result<File> {
+    File::create(path).context("Could not create VL file")
 }
 
 pub fn sha512_first_half(message: &[u8]) -> Result<Vec<u8>> {
@@ -191,6 +208,67 @@ pub fn print_validators_summary(mut validators: Vec<Validator>) -> Result<()> {
             );
         }
     }
+    Ok(())
+}
+
+fn format_validator_line(validator: &Validator) -> Result<String> {
+    let base58_key = hex_to_base58(&validator.validation_public_key)?;
+    let domain = validator
+        .decoded_manifest
+        .as_ref()
+        .and_then(|m| m.domain.clone())
+        .unwrap_or_default();
+    if domain.is_empty() {
+        Ok(base58_key)
+    } else {
+        Ok(format!("{} | {}", base58_key, domain))
+    }
+}
+
+pub fn print_diff(diff: &VlDiff) -> Result<()> {
+    let old_exp = convert_to_human_time(convert_to_unix_time(diff.old_expiration))?;
+    let new_exp = convert_to_human_time(convert_to_unix_time(diff.new_expiration))?;
+
+    println!();
+    if diff.old_sequence != diff.new_sequence {
+        println!("Sequence:           {} -> {}", diff.old_sequence, diff.new_sequence.green());
+    }
+    if diff.old_expiration != diff.new_expiration {
+        println!("Expiration:         {} -> {}", old_exp, new_exp.green());
+    }
+    if diff.old_validator_count != diff.new_validator_count {
+        println!("Validators:         {} -> {}", diff.old_validator_count, diff.new_validator_count.green());
+    }
+    if diff.old_blob_verified != diff.new_blob_verified {
+        println!(
+            "Blob Signature:     current {} | new {}",
+            get_tick_or_cross(diff.old_blob_verified.unwrap_or(false)),
+            get_tick_or_cross(diff.new_blob_verified.unwrap_or(false))
+        );
+    }
+    if diff.old_manifest_verified != diff.new_manifest_verified {
+        println!(
+            "Manifest Signature: current {} | new {}",
+            get_tick_or_cross(diff.old_manifest_verified),
+            get_tick_or_cross(diff.new_manifest_verified)
+        );
+    }
+
+    if diff.added.is_empty() && diff.removed.is_empty() {
+        println!("\n{}\n", "No changes.".green());
+        return Ok(());
+    }
+
+    println!("\nValidators:\n");
+
+    for v in &diff.added {
+        println!("{}", format!("+ {}", format_validator_line(v)?).green());
+    }
+    for v in &diff.removed {
+        println!("{}", format!("- {}", format_validator_line(v)?).red());
+    }
+
+    println!();
     Ok(())
 }
 

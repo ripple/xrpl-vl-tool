@@ -27,8 +27,8 @@ mod test {
         sequence: u32,
         domain: Option<String>,
     ) -> String {
-        let mut master_public_key_bytes = master_secret.clone().key_pair_bytes.public_key_bytes;
-        let mut signing_public_key_bytes = signing_secret.clone().key_pair_bytes.public_key_bytes;
+        let mut master_public_key_bytes = master_secret.key_pair_bytes.public_key_bytes.clone();
+        let mut signing_public_key_bytes = signing_secret.key_pair_bytes.public_key_bytes.clone();
         if master_secret.key_type == KeyType::Ed25519 {
             master_public_key_bytes.insert(0, 237);
         }

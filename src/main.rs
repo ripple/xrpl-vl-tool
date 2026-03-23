@@ -7,8 +7,8 @@ use xrpl_vl_tool::cli::{Cli, Commands};
 use xrpl_vl_tool::manifest::{decode_manifest, encode_manifest};
 use xrpl_vl_tool::secret::{get_secret, SecretProvider};
 use xrpl_vl_tool::time::{convert_to_human_time, convert_to_unix_time};
-use xrpl_vl_tool::util::{generate_vl_file, get_tick_or_cross, print_validators_summary};
-use xrpl_vl_tool::vl::{get_vl, load_vl, sign_vl, verify_vl};
+use xrpl_vl_tool::util::{generate_vl_file, get_tick_or_cross, print_diff, print_validators_summary};
+use xrpl_vl_tool::vl::{diff_vl, get_vl, load_vl, sign_vl, verify_vl};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -152,6 +152,14 @@ async fn main() -> Result<()> {
                 decoded_manifest.master_signature.to_uppercase(),
                 decoded_manifest.domain,
             );
+        }
+        Commands::Diff { current, new } => {
+            let (current_vl, new_vl) =
+                tokio::try_join!(load_vl(current), load_vl(new))?;
+            let verified_current = verify_vl(current_vl)?;
+            let verified_new = verify_vl(new_vl)?;
+            let diff = diff_vl(&verified_current, &verified_new)?;
+            print_diff(&diff)?;
         }
     }
 

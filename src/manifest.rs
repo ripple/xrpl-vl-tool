@@ -57,26 +57,26 @@ pub fn encode_manifest(
     // Master public key
     let master_public_key_bytes = base58_decode(Version::NodePublic, &master_public_key)?;
     let mut mpk_bytes = vec![0x71];
-    mpk_bytes.push(master_public_key_bytes.len() as u8);
+    mpk_bytes.push(u8::try_from(master_public_key_bytes.len()).context("Master public key too long")?);
     mpk_bytes.extend_from_slice(&master_public_key_bytes);
 
     // Signing public key
     let signing_public_key_bytes = base58_decode(Version::NodePublic, &signing_public_key)?;
     let mut signing_pk_bytes = vec![0x73];
-    signing_pk_bytes.push(signing_public_key_bytes.len() as u8);
+    signing_pk_bytes.push(u8::try_from(signing_public_key_bytes.len()).context("Signing public key too long")?);
     signing_pk_bytes.extend_from_slice(&signing_public_key_bytes);
 
     // Signature (hex -> bytes)
     let signature_decoded = hex::decode(signature)?;
     let mut signature_bytes = vec![0x76];
-    signature_bytes.push(signature_decoded.len() as u8);
+    signature_bytes.push(u8::try_from(signature_decoded.len()).context("Signature too long")?);
     signature_bytes.extend_from_slice(&signature_decoded);
 
     // Domain (optional)
     let domain_bytes = if let Some(d) = domain {
         let dbytes = d.as_bytes();
         let mut db = vec![0x77];
-        db.push(dbytes.len() as u8);
+        db.push(u8::try_from(dbytes.len()).context("Domain too long")?);
         db.extend_from_slice(dbytes);
         db
     } else {
@@ -87,7 +87,7 @@ pub fn encode_manifest(
     let master_sig_decoded = hex::decode(master_signature)?;
     // FieldID: 0x7012 (two bytes: 0x70, 0x12)
     let mut master_signature_bytes = vec![0x70, 0x12];
-    master_signature_bytes.push(master_sig_decoded.len() as u8);
+    master_signature_bytes.push(u8::try_from(master_sig_decoded.len()).context("Master signature too long")?);
     master_signature_bytes.extend_from_slice(&master_sig_decoded);
 
     // Concatenate all
@@ -180,13 +180,22 @@ fn decode_next_field(barray: &[u8]) -> Result<Option<DecodField>> {
         if cfieldid == 0 {
             // larger field id
             cbyteindex += 1;
+            if cbyteindex >= barray.len() {
+                anyhow::bail!("Malformed manifest: unexpected end of data reading extended field id");
+            }
             cfieldid = barray[cbyteindex];
             typefield.push(cfieldid);
         }
 
         cbyteindex += 1;
+        if cbyteindex >= barray.len() {
+            anyhow::bail!("Malformed manifest: unexpected end of data reading field length");
+        }
         let cfieldlen = barray[cbyteindex] as usize;
         cbyteindex += 1;
+        if cbyteindex + cfieldlen > barray.len() {
+            anyhow::bail!("Malformed manifest: field length {} exceeds remaining data", cfieldlen);
+        }
         return Ok(Some((
             typefield,
             barray[cbyteindex..(cbyteindex + cfieldlen)].to_vec(),
@@ -206,6 +215,10 @@ fn decode_next_field(barray: &[u8]) -> Result<Option<DecodField>> {
     };
 
     cbyteindex += 1;
+
+    if cbyteindex + cfieldlen > barray.len() {
+        anyhow::bail!("Malformed manifest: field length {} exceeds remaining data", cfieldlen);
+    }
 
     Ok(Some((
         typefield,

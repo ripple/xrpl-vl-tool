@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 
 use anyhow::{anyhow, Context, Result};
@@ -94,6 +95,11 @@ pub async fn get_vl(url_or_file: &str) -> Result<Vl> {
     let vl: Vl = if url.is_err() {
         serde_json::from_str(&fs::read_to_string(url_or_file)?)?
     } else {
+        if let Ok(ref parsed) = url {
+            if parsed.scheme() != "https" {
+                eprintln!("WARNING: Using non-HTTPS URL ({}). Data may be transmitted in plaintext.", parsed.scheme());
+            }
+        }
         reqwest::get(url_or_file).await?.json::<Vl>().await?
     };
     Ok(vl)
@@ -204,8 +210,9 @@ pub async fn sign_vl(
     v2_vl: Option<Vl>,
 ) -> Result<Vl> {
     let decoded_publisher_manifest = decode_manifest(&manifest)?;
+    verify_manifest(decoded_publisher_manifest.clone())?;
     let mut signing_public_key_hex =
-        hex::encode(secret.clone().key_pair_bytes.public_key_bytes).to_uppercase();
+        hex::encode(&secret.key_pair_bytes.public_key_bytes).to_uppercase();
     let manifest_signing_public_key_hex = base58_to_hex(
         &decoded_publisher_manifest.signing_public_key,
         Version::NodePublic,
@@ -420,5 +427,102 @@ pub fn decode_vl_v2(vl: &Vl) -> Result<DecodedVl> {
         signature: vl.signature.clone(),
         version: vl.version,
         blob_verification: None,
+    })
+}
+
+pub struct VlDiff {
+    pub added: Vec<Validator>,
+    pub removed: Vec<Validator>,
+    pub unchanged: Vec<Validator>,
+    pub old_sequence: u32,
+    pub new_sequence: u32,
+    pub old_expiration: i64,
+    pub new_expiration: i64,
+    pub old_validator_count: usize,
+    pub new_validator_count: usize,
+    pub old_blob_verified: Option<bool>,
+    pub new_blob_verified: Option<bool>,
+    pub old_manifest_verified: bool,
+    pub new_manifest_verified: bool,
+}
+
+fn get_blob_from_vl(vl: &DecodedVl) -> Result<&DecodedBlob> {
+    if vl.version == 1 {
+        vl.decoded_blob
+            .as_ref()
+            .context("Could not get decoded blob from v1 VL")
+    } else {
+        vl.decoded_blobs_v2
+            .as_ref()
+            .context("Could not get decoded blobs v2")?
+            .last()
+            .context("No blobs in v2 VL")?
+            .decoded_blob
+            .as_ref()
+            .context("Could not get decoded blob from v2 VL")
+    }
+}
+
+fn get_blob_verification(vl: &DecodedVl) -> Option<bool> {
+    if vl.version == 1 {
+        vl.blob_verification
+    } else {
+        vl.decoded_blobs_v2
+            .as_ref()
+            .and_then(|blobs| blobs.last())
+            .and_then(|b| b.blob_verification)
+    }
+}
+
+pub fn diff_vl(current: &DecodedVl, new: &DecodedVl) -> Result<VlDiff> {
+    let current_blob = get_blob_from_vl(current)?;
+    let new_blob = get_blob_from_vl(new)?;
+
+    let current_keys: HashSet<&str> = current_blob
+        .validators
+        .iter()
+        .map(|v| v.validation_public_key.as_str())
+        .collect();
+    let new_keys: HashSet<&str> = new_blob
+        .validators
+        .iter()
+        .map(|v| v.validation_public_key.as_str())
+        .collect();
+
+    let added: Vec<Validator> = new_blob
+        .validators
+        .iter()
+        .filter(|v| !current_keys.contains(v.validation_public_key.as_str()))
+        .cloned()
+        .collect();
+
+    let removed: Vec<Validator> = current_blob
+        .validators
+        .iter()
+        .filter(|v| !new_keys.contains(v.validation_public_key.as_str()))
+        .cloned()
+        .collect();
+
+    let unchanged: Vec<Validator> = new_blob
+        .validators
+        .iter()
+        .filter(|v| current_keys.contains(v.validation_public_key.as_str()))
+        .cloned()
+        .collect();
+
+    Ok(VlDiff {
+        added,
+        removed,
+        unchanged,
+        old_sequence: current_blob.sequence,
+        new_sequence: new_blob.sequence,
+        old_expiration: current_blob.expiration,
+        new_expiration: new_blob.expiration,
+        old_validator_count: current_blob.validators.len(),
+        new_validator_count: new_blob.validators.len(),
+        old_blob_verified: get_blob_verification(current),
+        new_blob_verified: get_blob_verification(new),
+        old_manifest_verified: current.manifest.verification,
+        new_manifest_verified: new.manifest.verification,
     })
 }

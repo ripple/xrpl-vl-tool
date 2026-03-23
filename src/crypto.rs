@@ -10,6 +10,7 @@ use secp256k1::{Keypair, Secp256k1};
 use serde::{Deserialize, Serialize};
 use std::str;
 use std::str::FromStr;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::secret::Secret;
 use crate::util::sha512_first_half;
@@ -34,13 +35,13 @@ pub struct Ed25519Verifier<V> {
     pub verifying_key: V,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct KeyPairBytes {
     pub public_key_bytes: Vec<u8>,
     pub private_key_bytes: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct KeyPairHex {
     pub public_key_hex: Option<String>,
     pub private_key_hex: String,
@@ -108,7 +109,7 @@ pub fn get_key_type(key_bytes: Vec<u8>) -> KeyType {
 }
 
 pub fn sign(secret: Secret, payload_bytes: &[u8]) -> Result<String> {
-    let private_key_bytes = secret.key_pair_bytes.private_key_bytes;
+    let private_key_bytes = secret.key_pair_bytes.private_key_bytes.clone();
     if secret.key_type == KeyType::Ed25519 {
         let signing_key = Ed25519SigningKey::from_bytes(
             &private_key_bytes

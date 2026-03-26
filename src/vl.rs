@@ -205,7 +205,7 @@ pub async fn sign_vl(
     manifests_file: String,
     sequence: u32,
     expiration_in_days: i16,
-    secret: Secret,
+    secret: &Secret,
     effective: Option<i64>,
     v2_vl: Option<Vl>,
 ) -> Result<Vl> {

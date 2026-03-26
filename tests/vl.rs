@@ -22,8 +22,8 @@ mod test {
     };
 
     fn generate_manifest(
-        master_secret: Secret,
-        signing_secret: Secret,
+        master_secret: &Secret,
+        signing_secret: &Secret,
         sequence: u32,
         domain: Option<String>,
     ) -> String {
@@ -123,12 +123,11 @@ mod test {
         let master_secret = generate_secret(&secret_type);
         let signing_secret = generate_secret(&secret_type);
         let publisher_manifest = if manifest.is_none() {
-            generate_manifest(master_secret.clone(), signing_secret.clone(), 1, None)
+            generate_manifest(&master_secret, &signing_secret, 1, None)
         } else {
             manifest.unwrap()
         };
         if version == 2 && number_of_blobs.is_some() {
-            let sig_secret = signing_secret.clone();
             let effective_date = effective.unwrap() + 1_000_000;
             let mut vl = v2_vl.unwrap_or_default();
             for index in 0..number_of_blobs.unwrap() {
@@ -138,7 +137,7 @@ mod test {
                     manifests_list.clone(),
                     sequence + (index as u32),
                     expiration,
-                    sig_secret.clone(),
+                    &signing_secret,
                     Some(effective_date + (index as i64)),
                     if vl.blobs_v2.is_none() {
                         None
@@ -156,7 +155,7 @@ mod test {
                 manifests_list.clone(),
                 sequence,
                 expiration,
-                signing_secret.clone(),
+                &signing_secret,
                 effective,
                 v2_vl,
             )

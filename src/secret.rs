@@ -6,11 +6,11 @@ use vaultrs::{
     kv2,
 };
 
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, Zeroizing, ZeroizeOnDrop};
 
 use crate::crypto::{get_key_type, get_keypair_bytes_from_private_key_hex, KeyPairBytes, KeyPairHex, KeyType};
 
-#[derive(Deserialize, Debug, Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Deserialize, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct Secret {
     pub key_pair_bytes: KeyPairBytes,
     #[zeroize(skip)]
@@ -45,20 +45,19 @@ impl SecretProvider {
 }
 
 pub fn get_secret_from_private_key_hex(private_key_hex: &str) -> Result<Secret> {
-    let key_type = get_key_type(hex::decode(private_key_hex)?);
-    let pk_hex = if key_type == KeyType::Ed25519 {
-        &private_key_hex.chars().skip(2).collect::<String>()
+    let decoded_bytes = Zeroizing::new(hex::decode(private_key_hex)?);
+    let key_type = get_key_type(&decoded_bytes);
+    let pk_hex: Zeroizing<String> = if key_type == KeyType::Ed25519 {
+        Zeroizing::new(private_key_hex.chars().skip(2).collect())
     } else {
-        private_key_hex
+        Zeroizing::new(private_key_hex.to_string())
     };
-    let key_pair_bytes = get_keypair_bytes_from_private_key_hex(pk_hex, key_type.clone())?;
-        Ok(
-            Secret {
-                key_pair_bytes,
-                key_type,
-                secret_provider: SecretProvider::Local,
-            }
-        )
+    let key_pair_bytes = get_keypair_bytes_from_private_key_hex(&pk_hex, key_type.clone())?;
+    Ok(Secret {
+        key_pair_bytes,
+        key_type,
+        secret_provider: SecretProvider::Local,
+    })
 }
 
 pub async fn get_secret(secret_provider: SecretProvider, secret_id: Option<String>) -> Result<Option<Secret>> {
@@ -72,10 +71,8 @@ pub async fn get_secret(secret_provider: SecretProvider, secret_id: Option<Strin
             get_vault_secret(&args[0], &args[1]).await
         }
         SecretProvider::Local => {
-            let local_private_key_hex = env::var("VL_PK")?;
-            Ok(
-                Some(get_secret_from_private_key_hex(&local_private_key_hex)?)
-            )
+            let local_private_key_hex = Zeroizing::new(env::var("VL_PK")?);
+            Ok(Some(get_secret_from_private_key_hex(&local_private_key_hex)?))
         }
     }
 }
@@ -87,12 +84,18 @@ pub async fn get_aws_secret(id: &str) -> Result<Option<Secret>> {
     if resp.secret_string.is_none() {
         Ok(None)
     } else {
-        Ok(Some(get_secret_from_private_key_hex(&resp.secret_string.context("Could not get aws secret string")?)?))
+        let secret_string = Zeroizing::new(
+            resp.secret_string.context("Could not get aws secret string")?,
+        );
+        Ok(Some(get_secret_from_private_key_hex(&secret_string)?))
     }
 }
 
 pub async fn get_vault_secret(mount: &str, path: &str) -> Result<Option<Secret>> {
-    let vault_token = env::var("VAULT_TOKEN")?;
+    // Wrap in Zeroizing so the local copy is zeroized on drop.
+    // The Vault client builder takes ownership of a copy internally,
+    // which is outside our control.
+    let vault_token = Zeroizing::new(env::var("VAULT_TOKEN")?);
     let vault_endpoint = env::var("VAULT_ENDPOINT")?;
     if vault_token.is_empty() || vault_endpoint.is_empty() {
         anyhow::bail!("VAULT_TOKEN and VAULT_ENDPOINT need to be set");
@@ -100,7 +103,7 @@ pub async fn get_vault_secret(mount: &str, path: &str) -> Result<Option<Secret>>
     let client = VaultClient::new(
         VaultClientSettingsBuilder::default()
             .address(vault_endpoint)
-            .token(vault_token)
+            .token((*vault_token).clone())
             .build()
             .context("Error building Vault client settings")?,
     )

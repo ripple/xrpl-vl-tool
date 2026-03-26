@@ -96,10 +96,9 @@ async fn main() -> Result<()> {
 
             let secret_provider: SecretProvider =
                 SecretProvider::from_string_slice(secret_provider)?;
-            let secret = get_secret(secret_provider, secret_name.clone()).await?;
-            if secret.is_none() {
-                anyhow::bail!("No secret was found");
-            }
+            let secret = get_secret(secret_provider, secret_name.clone())
+                .await?
+                .context("No secret was found")?;
 
             let vl = sign_vl(
                 *vl_version,
@@ -107,7 +106,7 @@ async fn main() -> Result<()> {
                 manifests_file.clone(),
                 *sequence,
                 *expiration_in_days,
-                secret.context("Could not get Secret")?,
+                &secret,
                 effective,
                 v2_vl,
             )

@@ -4,7 +4,9 @@ Tool to validate and sign Validators Lists.
 
 ## Description
 
-This tool allows you to `load` and `sign` VL's and `encode` and `decode` manifests.
+This tool allows you to `load`, `sign` and `diff` VL's and `encode` and `decode` manifests.
+
+For a step-by-step signing workflow, see the [Cheatsheet](Cheatsheet.md).
 
 ### Versions supported
 
@@ -79,6 +81,37 @@ Validator: ED9AE4F5887BA029EB7C0884486D23CF281975F773F44BD213054219882C411CC7 (n
 Validator: ED8651B672BCE2727BD93A62431592447D6637E5D0E768595ECC19E5E4AEACAF3B (nHU4bLE3EmSqNwfL4AP1UZeTNPrSPPP6FXLKXo2uqfHuvBQxDVKd) | Master: ✓, Signing: ✓ | ripple.com
 Validator: ED75940EC09130F9C553D8AF0FE354A112CC27251472AF1A90917597489192135F (nHUED59jjpQ5QbNhesXMhqii9gA8UfbBmv3i5StgyxG98qjsT4yn) | Master: ✓, Signing: ✓ | arrington-xrp-capital.blockdaemon.com
 Validator: EDA54C85F91219FD259134B6B126AD64AE7204B81DD4052510657E1A5697246AD2 (nHUcNC5ni7XjVYfCMe38Rm3KQaq27jw7wJpcUYdo4miWwpNePRTw) | Master: ✓, Signing: ✓ | cabbit.tech
+```
+
+### Diff
+
+Compares two Validator Lists and shows the differences. Only changed fields are displayed.
+
+```
+Usage: xrpl_vl_tool diff <CURRENT> <NEW>
+
+Arguments:
+  <CURRENT>  The published/existing VL (URL or file path)
+  <NEW>      The new/local VL (URL or file path)
+
+Options:
+  -h, --help  Print help
+```
+
+#### Example
+
+```
+./xrpl_vl_tool diff https://vl.ripple.com/ generated_vl_v1-1711152000.json
+```
+
+```
+Sequence:           84 -> 85
+Expiration:         2026-12-19 19:48:30 -> 2027-03-23 00:00:00
+
+Validators:
+
++ nHUinfdpmtfXs... | gen3labs.xyz
+- nHUpDPFoCNysc... | validator.poli.usp.br
 ```
 
 ### Sign

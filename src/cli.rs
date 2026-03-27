@@ -87,4 +87,11 @@ pub enum Commands {
         /// The manifest to decode
         manifest: String,
     },
+    /// Compares two Validator Lists and shows the differences
+    Diff {
+        /// The published/existing VL (URL or file path)
+        current: String,
+        /// The new/local VL (URL or file path)
+        new: String,
+    },
 }

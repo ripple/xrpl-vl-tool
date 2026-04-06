@@ -57,6 +57,10 @@ Paste the manifest line into `manifests.txt` with a `#` comment above it.
 ## Step 3: Sign
 
 ```bash
+# Required for Vault secret provider (token is in 1Password)
+export VAULT_TOKEN=''
+export VAULT_ENDPOINT='https://vault-ui.mgt.ripplex.io/'
+
 # Strip comments into a clean file
 grep -v '^#' manifests.txt > manifests_clean.txt
 
